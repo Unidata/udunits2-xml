@@ -1,3 +1,5 @@
+# Copyright (c) 2019 University Corporation for Atmospheric Research/Unidata
+# Distributed under the terms of the BSD 3-Clause License.
 import getpass
 import io
 import os
