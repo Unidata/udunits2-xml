@@ -1,0 +1,5 @@
+name: udunits2-xml
+channels:
+  - conda-forge
+dependencies:
+  - requests
