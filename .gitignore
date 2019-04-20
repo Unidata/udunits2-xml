@@ -1,0 +1,13 @@
+# pycharm ide
+.idea
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# udunits combined xml file
+udunits2_combined.xml
