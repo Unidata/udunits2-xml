@@ -11,3 +11,6 @@ __pycache__/
 
 # udunits combined xml file
 udunits2_combined.xml
+
+# udunits-2 copyright file
+UDUNITS-2_COPYRIGHT
