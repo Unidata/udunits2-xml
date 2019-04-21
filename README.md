@@ -24,4 +24,4 @@ The most recent version, and copyright, will be made available at:
 https://docs.unidata.ucar.edu/thredds/udunits2/current/udunits2_combined.xml
 https://docs.unidata.ucar.edu/thredds/udunits2/current/UDUNITS-2_COPYRIGHT
 
-This code runs nightly to check for new releases of `udunits-2` and depends on tagged releases in the [official udunits-2 repository](Unidata/udunits-2).
+This code runs nightly to check for new releases of `udunits-2` and depends on tagged releases in the [official udunits-2 repository](https://github.com/unidata/udunits-2).
