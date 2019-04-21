@@ -2,13 +2,22 @@
 # Distributed under the terms of the BSD 3-Clause License.
 import getpass
 import io
+import logging
 import os
+import sys
 import urllib.parse
 import xml.etree.ElementTree as ET
 from collections import namedtuple
 from datetime import datetime
 
 import requests
+
+root = logging.getLogger()
+root.setLevel(logging.DEBUG)
+
+handler = logging.StreamHandler(sys.stdout)
+handler.setLevel(logging.INFO)
+root.addHandler(handler)
 
 
 def get_udunits2_copyright_text(version):
@@ -21,12 +30,12 @@ def get_udunits2_copyright_text(version):
 
     """
 
-    copyright = ('Copyright {} University Corporation for Atmospheric Research\n\n'
-                 'This file is derived from the UDUNITS-2 package.  See the UDUNITS-2_COPYRIGHT\n'
-                 'https://docs.unidata.ucar.edu/thredds/udunits2/{}/UDUNITS-2_COPYRIGHT for copying and\n'
-                 'redistribution conditions.\n').format(datetime.today().year, version)
+    combined_copyright = ('Copyright {} University Corporation for Atmospheric Research\n\n'
+                          'This file is derived from the UDUNITS-2 package.  See the UDUNITS-2_COPYRIGHT\n'
+                          'https://docs.unidata.ucar.edu/thredds/udunits2/{}/UDUNITS-2_COPYRIGHT for copying and\n'
+                          'redistribution conditions.\n').format(datetime.today().year, version)
 
-    return copyright
+    return combined_copyright
 
 
 def fetch_udunits2_copyright_gh(version, save_filename):
@@ -73,8 +82,10 @@ def get_creds():
     nexus_pw = os.environ.get('NEXUS_PASSWORD')
 
     if nexus_name and nexus_pw:
+        logging.info('Found credentials.')
         nexus_cred = NexusCred(name=nexus_name, pw=nexus_pw)
     else:
+        logging.info('Prompt user for credentials.')
         nexus_name = input("username:")
         nexus_pw = getpass.getpass()
         nexus_cred = NexusCred(name=nexus_name, pw=nexus_pw)
@@ -97,13 +108,13 @@ def get_latest_github_release_version():
     v2.2.27.6
 
     """
-    # get latest github release
     response = requests.get('https://github.com/Unidata/UDUNITS-2/releases.atom')
     release_info_xml = response.content
     release_info = ET.fromstring(release_info_xml)
     entry_e = '{http://www.w3.org/2005/Atom}entry'
     title_e = '{http://www.w3.org/2005/Atom}title'
     udunits2_version = release_info.find(entry_e).find(title_e).text
+    logging.info('Most recent UDUNITS-2 release version from github: {}'.format(udunits2_version))
 
     return udunits2_version
 
@@ -122,6 +133,7 @@ def publish_to_nexus(version, combined_xml_filename, copyright_filename):
 
     """
 
+    logging.info('Obtain nexus credentials.')
     nexus_cred = get_creds()
     nexus_url = 'https://artifacts.unidata.ucar.edu/service/rest/v1/components'
     raw_directory_versioned = '/udunits2/{}/'.format(version)
@@ -132,6 +144,7 @@ def publish_to_nexus(version, combined_xml_filename, copyright_filename):
     )
 
     with open(combined_xml_filename, 'rb') as xmlfile, open(copyright_filename, 'rb') as cr_file:
+        logging.info('Publish versioned files.')
         files = {
             'raw.directory': (None, raw_directory_versioned),
             'raw.asset1': (combined_xml_filename, xmlfile),
@@ -148,13 +161,14 @@ def publish_to_nexus(version, combined_xml_filename, copyright_filename):
 
         # if unsuccessful, raise an error
         response.raise_for_status()
-
+        logging.info('...success.')
         # before updating the current version, need to go back to the
         # beginning of the files, otherwise empty file will appear in
         # nexus
         xmlfile.seek(0)
         cr_file.seek(0)
 
+        logging.info('Update "current" files.')
         files['raw.directory'] = (None, raw_directory_current)
 
         response = requests.post(nexus_url,
@@ -164,6 +178,7 @@ def publish_to_nexus(version, combined_xml_filename, copyright_filename):
 
         # if unsuccessful, raise an error
         response.raise_for_status()
+        logging.info('...success.')
 
 
 def should_update_nexus(latest_version):
@@ -188,10 +203,12 @@ def should_update_nexus(latest_version):
     """
     update = False
 
+    logging.debug('Fetch current version of the combined xml from nexus.')
     response = requests.get('https://docs.unidata.ucar.edu/thredds/udunits2/current/udunits2_combined.xml')
     # if status is 404, file does not exist and we should update
     # (this is the bootstrap case)
     if response.status_code == 404:
+        logging.info('Current version does not exist on nexus server - force update.')
         # current xml file does not exists on nexus, so for sure create it
         update = True
     else:
@@ -219,6 +236,7 @@ def should_update_nexus(latest_version):
                 'nexus version {} does not appear to be an actual version number. exiting.'.format(
                     udunits2_version_nexus))
         # check if version strings match. If not, need an update
+        logging.info('UDUNITS-2 release version used to build current nexus version: {}'.format(udunits2_version_nexus))
         update = latest_version != udunits2_version_nexus
 
     return update
@@ -271,42 +289,60 @@ def update_nexus(version):
     all_elements = []
     for system_doc_element in udunits2_unit_systems:
         system_filename = system_doc_element.text
+        logging.info('Processing info from {}.'.format(system_filename))
         prefix = prefix_map[system_filename]
         url = urllib.parse.urljoin(udunits_resource_base_url, system_filename)
         namespaces[prefix] = url
         response = requests.get(url)
         system_xml = response.content
         system = ET.fromstring(system_xml)
+        logging.debug('...looking for <unit> elements')
         elements_to_add = system.findall('unit')
-        if len(elements_to_add) == 0:
+        if len(elements_to_add) > 0:
+            logging.debug('...found {} <unit> elements.'.format(len(elements_to_add)))
+        else:
+            logging.debug('...no <unit> elements found. Looking for <prefix> elements.')
             elements_to_add = system.findall('prefix')
+            if len(elements_to_add) > 0:
+                logging.debug('...found {} <prefix> elements.'.format(len(elements_to_add)))
+            else:
+                msg = '...no <prefix> or <unit> elements found in {}.'.format(system_filename)
+                logging.error(msg)
+                raise ValueError(msg)
 
+        logging.debug('...adding namespace prefix to all {} found elements'.format(len(elements_to_add)))
         for element in elements_to_add:
             for child in element.iter():
                 child.tag = '{}:{}'.format(prefix, child.tag)
 
+        logging.info('...processed {} entries.'.format(len(elements_to_add)))
         all_elements.extend(elements_to_add)
 
+    logging.info('Construct combined xml document.')
     combined_systems = ET.Element('udunits-2')
 
-    root = ET.ElementTree(combined_systems)
-    root.getroot().set('xmlns:{}'.format(udunits2_prefix), udunits2_uri)
+    combined_root = ET.ElementTree(combined_systems)
+    logging.debug('...adding namespaces')
+    combined_root.getroot().set('xmlns:{}'.format(udunits2_prefix), udunits2_uri)
     for prefix, url in namespaces.items():
-        root.getroot().set('xmlns:{}'.format(prefix), url)
+        combined_root.getroot().set('xmlns:{}'.format(prefix), url)
 
+    logging.debug('...adding unit systems')
     unit_systems = ET.Element('{}:unit-system'.format(udunits2_prefix))
-
     for element in all_elements:
         unit_systems.append(element)
 
     combined_systems.append(unit_systems)
-
-    # add udunits-2 copyright info
+    logging.info('...combined {} total entries.'.format(len(all_elements)))
+    logging.debug('Add udunits-2 copyright info')
     version_no_v = version.replace('v', '')
     combined_file_copyright = ET.Comment(get_udunits2_copyright_text(version_no_v))
-    root.getroot().insert(0, combined_file_copyright)
-    root.write(combined_xml_file_name, encoding="UTF-8", xml_declaration=True)
+    combined_root.getroot().insert(0, combined_file_copyright)
 
+    logging.info('Write combined xml document to disk.')
+    combined_root.write(combined_xml_file_name, encoding="UTF-8", xml_declaration=True)
+
+    logging.info('\nSuccess! Publish combined xml document to nexus.\n')
     publish_to_nexus(version_no_v, combined_xml_file_name, copyright_file_name)
 
 
@@ -323,12 +359,17 @@ if __name__ == "__main__":
     also stored on nexus and referenced in the new combined xml file.
 
     """
+    logging.info('=+=+=+=+=+=')
+    logging.info('Begin update process.')
     # get latest version info from github
     udunits2_version_gh = get_latest_github_release_version()
 
     # check latest version from nexus, and see if the string differs from what we got from github
-    if not should_update_nexus(udunits2_version_gh):
-        print('No new version of udunits-2 detected. Exiting.')
-    else:
+    if should_update_nexus(udunits2_version_gh):
         # create new combined xml based on new release
         update_nexus(udunits2_version_gh)
+        logging.info('Finished update. Exiting.')
+    else:
+        logging.info('No new version of udunits-2 detected. Exiting.')
+
+    logging.info('=+=+=+=+=+=')
