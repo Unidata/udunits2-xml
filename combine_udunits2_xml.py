@@ -2,6 +2,7 @@
 # Distributed under the terms of the BSD 3-Clause License.
 import getpass
 import io
+import json
 import logging
 import os
 import sys
@@ -18,6 +19,12 @@ root.setLevel(logging.DEBUG)
 handler = logging.StreamHandler(sys.stdout)
 handler.setLevel(logging.INFO)
 root.addHandler(handler)
+
+# nexus urls
+nexus_url = 'https://artifacts.unidata.ucar.edu/'
+nexus_asset_search_and_download_url = urllib.parse.urljoin(nexus_url, '/service/rest/v1/search/assets/download/')
+nexus_components_url = urllib.parse.urljoin(nexus_url, '/service/rest/v1/components/')
+nexus_search_url = urllib.parse.urljoin(nexus_url, '/service/rest/v1/search/')
 
 
 def get_udunits2_copyright_text(version):
@@ -132,10 +139,8 @@ def publish_to_nexus(version, combined_xml_filename, copyright_filename):
         filename of the UDUNITS-2 COPYRIGHT file (on disk)
 
     """
-
     logging.info('Obtain nexus credentials.')
     nexus_cred = get_creds()
-    nexus_url = 'https://artifacts.unidata.ucar.edu/service/rest/v1/components'
     raw_directory_versioned = '/udunits2/{}/'.format(version)
     raw_directory_current = '/udunits2/current/'
 
@@ -154,7 +159,7 @@ def publish_to_nexus(version, combined_xml_filename, copyright_filename):
         }
 
         # make post.
-        response = requests.post(nexus_url,
+        response = requests.post(nexus_components_url,
                                  params=params,
                                  files=files,
                                  auth=(nexus_cred.name, nexus_cred.pw))
@@ -162,6 +167,32 @@ def publish_to_nexus(version, combined_xml_filename, copyright_filename):
         # if unsuccessful, raise an error
         response.raise_for_status()
         logging.info('...success.')
+
+        # clear out "current" directory in nexus
+        search_params = {
+            'repository': 'thredds-doc',
+            'group': raw_directory_current.rstrip('/'),
+        }
+
+        # have to use search to get everything under "/udunits2/current",
+        # then remove items one-by-one
+        search_response = requests.get(nexus_search_url,
+                                       params=search_params)
+        search_response.raise_for_status()
+
+        results = json.loads(search_response.content)
+        items = results.get('items')
+        if items:
+            logging.info('Clean out "current" files.')
+
+            for item in items:
+                item_id = item.get('id')
+                if item_id:
+                    asset_url = urllib.parse.urljoin(nexus_components_url, item_id)
+                    delete_response = requests.delete(asset_url, auth=(nexus_cred.name, nexus_cred.pw))
+                    delete_response.raise_for_status()
+                    logging.debug('...removed {}.'.format(item.get('name')))
+
         # before updating the current version, need to go back to the
         # beginning of the files, otherwise empty file will appear in
         # nexus
@@ -171,7 +202,7 @@ def publish_to_nexus(version, combined_xml_filename, copyright_filename):
         logging.info('Update "current" files.')
         files['raw.directory'] = (None, raw_directory_current)
 
-        response = requests.post(nexus_url,
+        response = requests.post(nexus_components_url,
                                  params=params,
                                  files=files,
                                  auth=(nexus_cred.name, nexus_cred.pw))
@@ -202,24 +233,36 @@ def should_update_nexus(latest_version):
 
     """
     update = False
+    current_udunits2_combined_component_name = 'udunits2/current/udunits2_combined.xml'
 
-    logging.debug('Fetch current version of the combined xml from nexus.')
-    response = requests.get('https://docs.unidata.ucar.edu/thredds/udunits2/current/udunits2_combined.xml')
-    # if status is 404, file does not exist and we should update
-    # (this is the bootstrap case)
-    if response.status_code == 404:
+    logging.debug('Search and fetch current version of the combined xml from nexus.')
+
+    search_params = {
+        'repository': 'thredds-doc',
+        'name': current_udunits2_combined_component_name,
+    }
+
+    # use nexus asset search and download api to get current version of combined
+    # xml file
+    search_response = requests.get(nexus_asset_search_and_download_url,
+                                   params=search_params)
+
+    if search_response.status_code == 404:
+        # if status is 404, file does not exist and we should update
+        # (this is the bootstrap case)
         logging.info('Current version does not exist on nexus server - force update.')
         # current xml file does not exists on nexus, so for sure create it
         update = True
     else:
+
         # if request for current version of the xml as stored on nexus fails,
         # raise an error
-        response.raise_for_status()
+        search_response.raise_for_status()
 
     # if we don't need to update due to a 404, do further checks
     if not update:
         # read the xml
-        udunits2_nexus_xml = response.content
+        udunits2_nexus_xml = search_response.content
 
         # extract the namespaces
         namespaces = dict([node for _, node in ET.iterparse(io.BytesIO(udunits2_nexus_xml),
