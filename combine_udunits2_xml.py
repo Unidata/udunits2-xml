@@ -26,6 +26,10 @@ nexus_asset_search_and_download_url = urllib.parse.urljoin(nexus_url, '/service/
 nexus_components_url = urllib.parse.urljoin(nexus_url, '/service/rest/v1/components/')
 nexus_search_url = urllib.parse.urljoin(nexus_url, '/service/rest/v1/search/')
 
+# file names (on-disk and in nexus)
+copyright_file_name = 'UDUNITS-2_COPYRIGHT'
+combined_xml_file_name = 'udunits2_combined.xml'
+
 
 def get_udunits2_copyright_text(version):
     r"""Obtain copyright text to be used in the combined xml file.
@@ -74,7 +78,7 @@ def get_creds():
     Returns
     -------
     namedtuple
-        credientials stored in a named tuple
+        credentials stored in a named tuple
 
     >>> creds = get_creds()
     >>> print(creds.name)
@@ -192,6 +196,7 @@ def publish_to_nexus(version, combined_xml_filename, copyright_filename):
                     delete_response = requests.delete(asset_url, auth=(nexus_cred.name, nexus_cred.pw))
                     delete_response.raise_for_status()
                     logging.debug('...removed {}.'.format(item.get('name')))
+            logging.info('...success.')
 
         # before updating the current version, need to go back to the
         # beginning of the files, otherwise empty file will appear in
@@ -225,7 +230,7 @@ def should_update_nexus(latest_version):
     -------
     bool
         If False, nexus is up-to-date. If True, current version in nexus is
-         not the same as latest version on github, or a curent version does
+         not the same as latest version on github, or a current version does
          not exist on nexus.
 
     >>> print(should_update_nexus('v2.2.27.6'))
@@ -302,10 +307,7 @@ def update_nexus(version):
     >>> update_nexus('v2.2.27.6')
 
     """
-    copyright_file_name = 'UDUNITS-2_COPYRIGHT'
-    combined_xml_file_name = 'udunits2_combined.xml'
-
-    # frist, grab udunits-2 copyright
+    # first, grab udunits-2 copyright
     fetch_udunits2_copyright_gh(version, copyright_file_name)
 
     prefix_map = {
@@ -408,9 +410,14 @@ if __name__ == "__main__":
     udunits2_version_gh = get_latest_github_release_version()
 
     # check latest version from nexus, and see if the string differs from what we got from github
-    if should_update_nexus(udunits2_version_gh):
+    if not should_update_nexus(udunits2_version_gh):
         # create new combined xml based on new release
         update_nexus(udunits2_version_gh)
+        # cleanup like good citizens
+        if os.path.exists(copyright_file_name) and os.path.exists(combined_xml_file_name):
+            logging.info('Cleanup temporary files.')
+            os.remove(copyright_file_name)
+            os.remove(combined_xml_file_name)
         logging.info('Finished update. Exiting.')
     else:
         logging.info('No new version of udunits-2 detected. Exiting.')
