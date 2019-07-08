@@ -410,7 +410,7 @@ if __name__ == "__main__":
     udunits2_version_gh = get_latest_github_release_version()
 
     # check latest version from nexus, and see if the string differs from what we got from github
-    if not should_update_nexus(udunits2_version_gh):
+    if should_update_nexus(udunits2_version_gh):
         # create new combined xml based on new release
         update_nexus(udunits2_version_gh)
         # cleanup like good citizens
