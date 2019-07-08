@@ -149,7 +149,7 @@ def publish_to_nexus(version, combined_xml_filename, copyright_filename):
     raw_directory_current = '/udunits2/current/'
 
     params = (
-        ('repository', 'thredds-doc'),
+        ('repository', 'udunits-2-docs'),
     )
 
     with open(combined_xml_filename, 'rb') as xmlfile, open(copyright_filename, 'rb') as cr_file:
@@ -174,7 +174,7 @@ def publish_to_nexus(version, combined_xml_filename, copyright_filename):
 
         # clear out "current" directory in nexus
         search_params = {
-            'repository': 'thredds-doc',
+            'repository': 'udunits-2-docs',
             'group': raw_directory_current.rstrip('/'),
         }
 
@@ -243,7 +243,7 @@ def should_update_nexus(latest_version):
     logging.debug('Search and fetch current version of the combined xml from nexus.')
 
     search_params = {
-        'repository': 'thredds-doc',
+        'repository': 'udunits-2-docs',
         'name': current_udunits2_combined_component_name,
     }
 
