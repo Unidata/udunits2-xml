@@ -25,6 +25,7 @@ nexus_url = 'https://artifacts.unidata.ucar.edu/'
 nexus_asset_search_and_download_url = urllib.parse.urljoin(nexus_url, '/service/rest/v1/search/assets/download/')
 nexus_components_url = urllib.parse.urljoin(nexus_url, '/service/rest/v1/components/')
 nexus_search_url = urllib.parse.urljoin(nexus_url, '/service/rest/v1/search/')
+repository_name = 'docs-thredds-udunits'
 
 # file names (on-disk and in nexus)
 copyright_file_name = 'UDUNITS-2_COPYRIGHT'
@@ -149,7 +150,7 @@ def publish_to_nexus(version, combined_xml_filename, copyright_filename):
     raw_directory_current = '/udunits2/current/'
 
     params = (
-        ('repository', 'udunits-2-docs'),
+        ('repository', repository_name),
     )
 
     with open(combined_xml_filename, 'rb') as xmlfile, open(copyright_filename, 'rb') as cr_file:
@@ -174,7 +175,7 @@ def publish_to_nexus(version, combined_xml_filename, copyright_filename):
 
         # clear out "current" directory in nexus
         search_params = {
-            'repository': 'udunits-2-docs',
+            'repository': repository_name,
             'group': raw_directory_current.rstrip('/'),
         }
 
@@ -243,7 +244,7 @@ def should_update_nexus(latest_version):
     logging.debug('Search and fetch current version of the combined xml from nexus.')
 
     search_params = {
-        'repository': 'udunits-2-docs',
+        'repository': repository_name,
         'name': current_udunits2_combined_component_name,
     }
 
